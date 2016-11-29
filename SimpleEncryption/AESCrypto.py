@@ -11,6 +11,9 @@ import random
 class AESCrypto:
     keySize = 16
     oracle2key = None
+    unknownData12 = None
+    prefixDataCh14 = None
+    oracle = None
 
     def decryptECBAES(key, data):
         cipher = AES.new(key, AES.MODE_ECB)
@@ -61,7 +64,7 @@ class AESCrypto:
         return Pkcs7.removePkcs7Padding(b''.join(decryptedSegmentedData), AESCrypto.keySize)
 
     def generateRandomAESKey(size):
-        """Generates random key of 16 bytes"""
+        """Generates random key of size bytes"""
         return os.urandom(size)
 
     def encryptionOracle(data):
@@ -85,42 +88,94 @@ class AESCrypto:
         else:
             return AES.MODE_CBC
 
-    def encryptionOracleNumber2(self, data):
+    def encryptionOracleCh12(self, data):
         if self.oracle2key == None:
             self.oracle2key = AESCrypto.generateRandomAESKey(AESCrypto.keySize)
-        dataPrepared = Pkcs7.pkcs7Padding(data, self.keySize)
+        dataPrepared = Pkcs7.pkcs7Padding(data + AESCrypto.unknownData12, self.keySize)
         mode = AES.MODE_ECB
         encrypted = AESCrypto.encryptEBCAES(self.oracle2key, dataPrepared)
         return {'data': encrypted, 'mode': mode}
 
-    def detectBlockSizeAES(self, unknownData):
-        blockSize = 1
-        previousEncryptedBlock = ""
-        while blockSize < 200:
-            toBeEncrypted = b"A" * blockSize + unknownData
-            newBlock = self.encryptionOracleNumber2(self, toBeEncrypted)
-            if newBlock["data"][0:blockSize-1] == previousEncryptedBlock[0:blockSize-1]:
-                return blockSize - 1
-            previousEncryptedBlock = newBlock["data"]
-            blockSize += 1
+    def detectBlockSizeAES(self):
+        count = 1
+        lengthCleanBlock = len(self.oracle(self, b"")["data"])
+        while True:
+            toBeEncrypted = b"A" * count
+            newBlock = self.oracle(self, toBeEncrypted)
+            if  lengthCleanBlock != len(newBlock["data"]):
+                return len(newBlock["data"]) - lengthCleanBlock
+            count += 1
 
-    def findOutFirstByte(self, knownData, unknownData, blockSize):
-        numberOfUpfrontPadding = blockSize - (len(knownData) % blockSize) - 1
-        myBlock = b"A" * numberOfUpfrontPadding
-        toBeEncrypted = myBlock + unknownData
-        encryptedInputBlock = self.encryptionOracleNumber2(self, toBeEncrypted)["data"]
+    def findOutFirstByte(self, knownData, blockSize, prefixLength):
+        component1 =  blockSize - (prefixLength%blockSize)
+        component2 = blockSize - (len(knownData) % blockSize) -1
+        component3 = prefixLength - (prefixLength % blockSize)
+
+        myBlock = b"A" * (component1 + component2)
+        toBeEncrypted = myBlock
+        encryptedInputBlock = self.oracle(self, toBeEncrypted)["data"]
         for i in range(256):
             potentialCharacter = bytes([i])
-            potentialMatchingBlock = self.encryptionOracleNumber2(self, myBlock+knownData+potentialCharacter)["data"][0: len(myBlock+knownData+potentialCharacter)]
-            if (potentialMatchingBlock in encryptedInputBlock ):
+            potentialMatchingBlock = self.oracle(self, myBlock + knownData + potentialCharacter)["data"]\
+                [component3+component1:component3+component1+component2 + len(knownData) + 1]#+ len(myBlock + knownData + potentialCharacter)]
+            if (potentialMatchingBlock in encryptedInputBlock[component3+component1:] ):
                 return potentialCharacter
+        return b""
 
-
-
-    def breakAESECBSimple(self, unknownData):
-        blockSize = self.detectBlockSizeAES(self, unknownData)
+    def breakAESECBSimple(self):
+        blockSize = self.detectBlockSizeAES(self)
+        detectedPrefixLenght = AESCrypto.detectInitialBytesLength(AESCrypto, blockSize)
         detectedString = b""
-        while len(detectedString) < len(unknownData):
-            detectedString += self.findOutFirstByte(self, detectedString, unknownData, blockSize)
-        return detectedString
+        detectedByte = None
+        while detectedByte != b"":
+            detectedByte = self.findOutFirstByte(self, detectedString, blockSize, detectedPrefixLenght)
+            detectedString = detectedString + detectedByte
+        return Pkcs7.removePkcs7Padding(detectedString, AESCrypto.keySize)
+
+
+    def generateRandomSizedRandomBytes(self):
+        return os.urandom(random.randrange(8,300))
+
+    def encryptionOracleCh14(self, data):
+        if self.oracle2key == None:
+            self.oracle2key = AESCrypto.generateRandomAESKey(AESCrypto.keySize)
+
+        if self.prefixDataCh14 == None:
+            self.prefixDataCh14 = AESCrypto.generateRandomSizedRandomBytes(self)
+
+        dataPrepared = Pkcs7.pkcs7Padding(self.prefixDataCh14 + data + self.unknownData12, self.keySize)
+        mode = AES.MODE_ECB
+        encrypted = AESCrypto.encryptEBCAES(self.oracle2key, dataPrepared)
+        return {'data': encrypted, 'mode': mode}
+
+    def hasEqualBlock(self, blocks, blockCount):
+        for i in range (blockCount + 3):
+            if blocks[i] == blocks[i+1]:
+                return True
+        return False
+
+
+
+    def detectInitialBytesLength(self, blockSize):
+        Blockcount = 0
+        cleanBlock = self.oracle(self, b"")["data"]
+        newBlock = self.oracle(self, b"A")["data"]
+        #find out total blocks
+        while cleanBlock[blockSize*Blockcount : blockSize * (Blockcount+1)] == newBlock[blockSize*Blockcount : blockSize * (Blockcount+1)]:
+            Blockcount += 1
+
+        length = Blockcount * blockSize
+
+        #Detect length of bytes within the fragmented block.
+        for i in range (blockSize):
+            toBeEncrypted = b"A" * (2* blockSize + i)
+            newBlock = self.oracle(self, toBeEncrypted)
+            blocks = Utils.splitData(newBlock["data"], blockSize)
+            if self.hasEqualBlock(self, blocks, Blockcount):
+                if i == 0:
+                    break
+                length +=  blockSize - i
+                break
+        return length
+
 

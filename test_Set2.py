@@ -75,13 +75,13 @@ class MyTestCase(unittest.TestCase):
 
     def test_challenge12_1_detectSameEncryptedBlock(self):
         f = open('InputFiles/Set2Ch12.txt', 'r')
-        unknownData = Base64.base64ToHex(f.read())
+        AESCrypto.unknownData12 = Base64.base64ToHex(f.read())
         f.close()
-        data16bytes = b"A" * 16 + unknownData
-        data17bytes = b"A" * 17 + unknownData
+        data16bytes = b"A" * 16
+        data17bytes = b"A" * 17
         aesCrypto = AESCrypto
-        encrypted16 = aesCrypto.encryptionOracleNumber2(aesCrypto, data16bytes)
-        encrypted17 = aesCrypto.encryptionOracleNumber2(aesCrypto, data17bytes)
+        encrypted16 = aesCrypto.encryptionOracleCh12(aesCrypto, data16bytes)
+        encrypted17 = aesCrypto.encryptionOracleCh12(aesCrypto, data17bytes)
         print("\nDetects the same encrypted block")
         print("encrypted16: {}".format(encrypted16))
         print("encrypted17: {}".format(encrypted17))
@@ -89,9 +89,10 @@ class MyTestCase(unittest.TestCase):
 
     def test_challenge12_2_detectBlockSize(self):
         f = open('InputFiles/Set2Ch12.txt', 'r')
-        unknownData = Base64.base64ToHex(f.read())
+        AESCrypto.unknownData12= Base64.base64ToHex(f.read())
         f.close()
-        detectedBlockSize = AESCrypto.detectBlockSizeAES(AESCrypto, unknownData)
+        AESCrypto.oracle = AESCrypto.encryptionOracleCh12
+        detectedBlockSize = AESCrypto.detectBlockSizeAES(AESCrypto)
         expectedBlockSize = 16
         print("\nDetects the same encrypted block")
         print("detectedBlockSize: {}".format(detectedBlockSize))
@@ -100,10 +101,11 @@ class MyTestCase(unittest.TestCase):
 
     def test_challenge12_3_findOutFirstByteValue(self):
         f = open('InputFiles/Set2Ch12.txt', 'r')
-        unknownData = Base64.base64ToHex(f.read())
+        AESCrypto.unknownData12 = Base64.base64ToHex(f.read())
         knownData = b''
         f.close()
-        detectedFirstByte = AESCrypto.findOutFirstByte(AESCrypto, knownData, unknownData, 16)
+        AESCrypto.oracle = AESCrypto.encryptionOracleCh12
+        detectedFirstByte = AESCrypto.findOutFirstByte(AESCrypto, knownData, 16, 0)
         expectedFirstByte = b'R'
 
         print("\nDetects the first byte of an unknown string")
@@ -111,24 +113,46 @@ class MyTestCase(unittest.TestCase):
         print("expectedFirstByte: {}".format(expectedFirstByte))
         self.assertEqual(expectedFirstByte, detectedFirstByte)
 
-    def test_challenge12_4_mathematicsOfAs(self):
-        knownData = "Roll"
+    def test_challenge12_4_detectEndOfString(self):
+        f = open('InputFiles/Set2Ch12.txt', 'r')
+        AESCrypto.unknownData12 = Base64.base64ToHex(f.read())
+        knownData = AESCrypto.unknownData12 + b"\x01"
+        f.close()
+        AESCrypto.oracle = AESCrypto.encryptionOracleCh12
+        detectedFirstByte = AESCrypto.findOutFirstByte(AESCrypto, knownData, 16, 0)
+        expectedFirstByte = b""
+
+        print("\nDetects the first byte of an unknown string")
+        print("detectedFirstByte: {}".format(detectedFirstByte))
+        print("expectedFirstByte: {}".format(expectedFirstByte))
+        self.assertEqual(expectedFirstByte, detectedFirstByte)
+
+    def test_challenge12_5_mathematicsOfAs(self):
+        knownData = ""
         blockSize = 16
+        prefixLength = 5
 
         print("\nTests Math for getting padding")
-        numberOfAsNeeded = blockSize - (len(knownData) % blockSize) - 1
-        self.assertEqual(11, numberOfAsNeeded)
+        # numberOfAsNeeded = blockSize - (len(knownData) % blockSize) - 1
+        component1 =  blockSize - (prefixLength%blockSize)
 
-    def test_challenge12_5_BreakAESECB(self):
+        component2 = blockSize - (len(knownData) % blockSize) -1
+
+        numberOfAsNeeded = component1 + component2# - prefixInfluence
+        print(numberOfAsNeeded)
+        self.assertEqual(26, numberOfAsNeeded)
+
+    def test_challenge12_6_BreakAESECB(self):
         f = open('InputFiles/Set2Ch12.txt', 'r')
-        unknownData = Base64.base64ToHex(f.read())
+        AESCrypto.unknownData12 = Base64.base64ToHex(f.read())
         f.close()
-        brokenAESECB = AESCrypto.breakAESECBSimple(AESCrypto, unknownData)
+        AESCrypto.oracle = AESCrypto.encryptionOracleCh12
+        brokenAESECB = AESCrypto.breakAESECBSimple(AESCrypto)
 
         print("\nBreaks AES ECB little by little")
-        print("unknownData: {}".format(unknownData))
+        print("unknownData: {}".format(AESCrypto.unknownData12))
         print("brokenAESECB: {}".format(brokenAESECB))
-        self.assertEqual(unknownData, brokenAESECB)
+        self.assertEqual(AESCrypto.unknownData12, brokenAESECB)
 
     def test_challenge13_1_ConvertCookieToJson(self):
         inputCookie = "foo=bar&baz=qux&zap=zazzle"
@@ -204,7 +228,7 @@ class MyTestCase(unittest.TestCase):
         print("cookieProfile: {}".format(cookieProfile))
         print("expectedCookieProfile: {}".format(expectedCookieProfileList))
 
-        self.assertEqual(True, cookieProfile in expectedCookieProfileList)
+        self.assertTrue(cookieProfile in expectedCookieProfileList)
 
     def test_challenge13_7_encryptDecryptProfile(self):
         expectedJsonString = json.loads(json.dumps({'role': 'user', 'email': 'foo@bar.com', 'uid': "10"}))
@@ -221,6 +245,48 @@ class MyTestCase(unittest.TestCase):
         print("expectedJsonString: {}".format(expectedJsonString))
         self.assertEqual(expectedJsonString, reconstructedJsonProfile)
 
+    def test_challenge14_1_generateRandomBytes(self):
+        randomBytes = AESCrypto.generateRandomSizedRandomBytes(AESCrypto)
+
+        print("\nCreates random bytes of length 8 <= len <= 300")
+        print("randomBytes: {}".format(randomBytes))
+        print("len(randomBytes): {}".format(len(randomBytes)))
+        self.assertGreaterEqual(len(randomBytes), 8)
+        self.assertLessEqual(len(randomBytes), 300)
+
+    def test_challenge14_2_detectBlockSize(self):
+        f = open('InputFiles/Set2Ch12.txt', 'r')
+        AESCrypto.unknownData12= Base64.base64ToHex(f.read())
+        f.close()
+        AESCrypto.oracle = AESCrypto.encryptionOracleCh14
+        detectedBlockSize = AESCrypto.detectBlockSizeAES(AESCrypto)
+        expectedBlockSize = 16
+        print("\nDetects the same encrypted block")
+        print("detectedBlockSize: {}".format(detectedBlockSize))
+        print("expectedBlockSize: {}".format(expectedBlockSize))
+        self.assertEqual(expectedBlockSize,detectedBlockSize )
+
+    def test_challenge14_3_detectInitialBytesLength(self):
+        f = open('InputFiles/Set2Ch12.txt', 'r')
+        AESCrypto.unknownData12 = Base64.base64ToHex(f.read())
+        f.close()
+        AESCrypto.oracle = AESCrypto.encryptionOracleCh14
+        detectedBlockSize = AESCrypto.detectBlockSizeAES(AESCrypto)
+        detectedLenght = AESCrypto.detectInitialBytesLength(AESCrypto, detectedBlockSize)
+
+        self.assertEqual(len(AESCrypto.prefixDataCh14), detectedLenght)
+
+    def test_challenge14_4_breakAESHard(self):
+        f = open('InputFiles/Set2Ch12.txt', 'r')
+        AESCrypto.unknownData12 = Base64.base64ToHex(f.read())
+        f.close()
+        AESCrypto.oracle = AESCrypto.encryptionOracleCh14
+        brokenAESECB = AESCrypto.breakAESECBSimple(AESCrypto)
+
+        print("\nBreaks AES ECB little by little")
+        print("unknownData: {}".format(AESCrypto.unknownData12))
+        print("brokenAESECB: {}".format(brokenAESECB))
+        self.assertEqual(AESCrypto.unknownData12, brokenAESECB)
 
 
 if __name__ == '__main__':
