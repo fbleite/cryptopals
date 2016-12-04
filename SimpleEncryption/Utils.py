@@ -41,3 +41,13 @@ class Utils:
         for i in range(0, len(data), size):
             splittedData.append(data[i:i + size])
         return splittedData
+
+
+    def sanitizeInput(self, inputData):
+        return inputData.replace("&", "\&").replace("=", "\=").replace(";", "\;")
+
+    def sanitizeInputCookie(self, inputData):
+        return inputData.replace(';', '%3B').replace('=', '%3D')
+
+    def appendCookieStringAround(self, string):
+        return "comment1=cooking%20MCs;userdata=" + Utils.sanitizeInputCookie(Utils, string) + ";comment2=%20like%20a%20pound%20of%20bacon"

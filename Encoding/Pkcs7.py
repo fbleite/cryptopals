@@ -11,5 +11,5 @@ class Pkcs7:
         potentialSize = data[-1]
         for i in range(potentialSize):
             if data[-1-i] != potentialSize:
-                return data
+                raise ValueError("The data was not padded correctly")
         return data[0: -potentialSize]

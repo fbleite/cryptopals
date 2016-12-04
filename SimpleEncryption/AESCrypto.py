@@ -2,7 +2,7 @@ from Crypto.Cipher import AES
 from SimpleEncryption.Utils import Utils
 from SimpleEncryption.XOR import XOR
 from Encoding.Pkcs7 import Pkcs7
-from enum import Enum
+from Encoding.Json import Json
 import io
 import os
 import random
@@ -14,6 +14,8 @@ class AESCrypto:
     unknownData12 = None
     prefixDataCh14 = None
     oracle = None
+    cookieCh16Key = None
+    cookieCh16IV = None
 
     def decryptECBAES(key, data):
         cipher = AES.new(key, AES.MODE_ECB)
@@ -178,4 +180,14 @@ class AESCrypto:
                 break
         return length
 
+
+    def encryptCookieString(self, myString):
+        cookieString = Utils.appendCookieStringAround(Utils, myString)
+        self.cookieCh16Key = self.generateRandomAESKey(AESCrypto.keySize)
+        self.cookieCh16IV = self.generateRandomAESKey(AESCrypto.keySize)
+        return self.encryptCBCAES(self.cookieCh16IV, self.cookieCh16Key, bytes(cookieString, "ascii"))
+
+    def decryptDetectAdminTrue(self, encryptedData):
+        decryptedData = self.decryptCBCAES(self.cookieCh16IV, self.cookieCh16Key, encryptedData)
+        return False if decryptedData.find(b";admin=true;") == -1 else  True
 

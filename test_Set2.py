@@ -5,6 +5,7 @@ from SimpleEncryption.AESCrypto import AESCrypto
 from Encoding.Json import Json
 import json
 from collections import OrderedDict
+from SimpleEncryption.Utils import Utils
 
 class MyTestCase(unittest.TestCase):
     def test_challenge09_1_addPkcs7Padding(self):
@@ -20,18 +21,6 @@ class MyTestCase(unittest.TestCase):
         print("expectedEncoded: {}".format(expectedEncoded))
         self.assertEqual(expectedEncoded, encodedData)
 
-    def test_challenge09_2_removePkcs7Padding(self):
-        paddedData = b"YELLOW SUBMARINE\x04\x04\x04\x04"
-        expectedNotPadded = b"YELLOW SUBMARINE"
-        blockSize = 20
-        notPadded = Pkcs7.removePkcs7Padding(paddedData, blockSize)
-
-        print("\nPkcs7 Encoding")
-        print("paddedData: {}".format(paddedData))
-        print("blockSize: {}".format(blockSize))
-        print("notPadded: {}".format(notPadded))
-        print("expectedNotPadded: {}".format(expectedNotPadded))
-        self.assertEqual(expectedNotPadded, notPadded)
 
     def test_challenge10_1_simpleEncryption(self):
         IV=bytes([0]*16)
@@ -180,7 +169,7 @@ class MyTestCase(unittest.TestCase):
     def test_challenge13_3_sanitizeInput(self):
         email = "fo&o@ba=r.com"
         expectedSanitizedEmail = "fo\&o@ba\=r.com"
-        sanitizedEmail = Json.sanitizeInput(Json, email)
+        sanitizedEmail = Utils.sanitizeInput(Utils, email)
 
         print("\nCreates cookie profile from e-mail")
         print("email: {}".format(email))
@@ -288,6 +277,65 @@ class MyTestCase(unittest.TestCase):
         print("brokenAESECB: {}".format(brokenAESECB))
         self.assertEqual(AESCrypto.unknownData12, brokenAESECB)
 
+    def test_challenge15_1_removePkcs7Padding(self):
+        paddedData = b"YELLOW SUBMARINE\x04\x04\x04\x04"
+        expectedNotPadded = b"YELLOW SUBMARINE"
+        blockSize = 20
+        notPadded = Pkcs7.removePkcs7Padding(paddedData, blockSize)
+
+        print("\nPkcs7 Encoding")
+        print("paddedData: {}".format(paddedData))
+        print("blockSize: {}".format(blockSize))
+        print("notPadded: {}".format(notPadded))
+        print("expectedNotPadded: {}".format(expectedNotPadded))
+        self.assertEqual(expectedNotPadded, notPadded)
+
+
+    def test_challenge15_2_exceptionBadPadding(self):
+        paddedData = b"YELLOW SUBMARINE\x05\x05\x05\x05"
+        expectedNotPadded = b"YELLOW SUBMARINE"
+        blockSize = 20
+
+        print("\nPkcs7 Encoding")
+        print("paddedData: {}".format(paddedData))
+        print("blockSize: {}".format(blockSize))
+        self.assertRaises(ValueError, Pkcs7.removePkcs7Padding, paddedData, blockSize)
+
+    def test_challenge16_1_AppendCookieString(self):
+        myString = "Whatever I want to write"
+        cookieString = Utils.appendCookieStringAround(Utils, myString)
+        expectedCookieString = "comment1=cooking%20MCs;userdata=Whatever I want to write;comment2=%20like%20a%20pound%20of%20bacon"
+
+        print("\nAppend Cookie String")
+        print("myString: {}".format(myString))
+        print("cookieString: {}".format(cookieString))
+        print("expectedCookieString: {}".format(expectedCookieString))
+        self.assertEqual(expectedCookieString, cookieString)
+
+
+    def test_challenge16_2_detectAdminFalse(self):
+        myString= ";admin=true;"
+        encryptedData = AESCrypto.encryptCookieString(AESCrypto, myString)
+        found = AESCrypto.decryptDetectAdminTrue(AESCrypto, encryptedData)
+
+        print("\nEnsures false find of Admin is correct")
+        self.assertFalse(found)
+
+    def test_challenge16_3_detectAdminTrue(self):
+        #semi colon is 59 and equal is 61 both odd numbers with last bit set
+        #choose the character with one less to be used as input to work around the escaping
+        myString= ":admin<true:"
+        encryptedData = bytearray(AESCrypto.encryptCookieString(AESCrypto, myString))
+
+        #Based on input string flips that last bit of each of the characters that we want to change
+        encryptedData[16] ^= 1
+        encryptedData[22] ^= 1
+        encryptedData[27] ^= 1
+
+        encryptedData = bytes(encryptedData)
+        found = AESCrypto.decryptDetectAdminTrue(AESCrypto, encryptedData)
+        print("\nEnsures true find of Admin is correct")
+        self.assertTrue(found)
 
 if __name__ == '__main__':
     unittest.main()
